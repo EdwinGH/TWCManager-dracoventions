@@ -1,0 +1,242 @@
+// TWCManager configuration - EXAMPLE FILE
+//
+// Every value below is a safe but mostly useless default. At minimum you must
+// set wiringMaxAmpsAllTWCs, wiringMaxAmpsPerTWC, approvedVINs, webIPCDir and
+// the four mysql_* settings before anything will work.
+//
+// This file is JSON5: // and /* */ comments and trailing commas are allowed, so
+// the explanation of each setting lives next to it.
+//
+// Reading that needs a JSON5 parser. TWCManager uses the json5 package when it
+// is installed, and otherwise twc_json5.py, which sits next to TWCManager.py and
+// needs no package manager. Keys and strings must be in double quotes either way.
+//
+// TWCManager NEVER WRITES TO THIS FILE. Everything here is yours to edit, and
+// your comments and layout are safe.
+//
+// The settings TWCManager changes by itself go in TWCManager_status.ini, which
+// is read after this file and overrides it. Two settings appear in both:
+// "nonScheduledAmpsMax" and "approvedVINs". The value here is the one to start
+// from, used until the web interface changes it; from then on the status file
+// decides. To go back to the value below, stop TWCManager, delete that entry
+// from the status file (or delete the whole file), and start it again.
+//
+// WARNING: wiringMaxAmpsAllTWCs and wiringMaxAmpsPerTWC decide how much current
+// TWCManager will ask your chargers to draw. Setting them too high will trip the
+// circuit breaker at best, or START A FIRE if the breaker malfunctions. If you
+// are not sure what to put here, ask the electrician who installed your charger.
+//
+// Your real TWCManager_config.json contains the MySQL password, so keep it out
+// of version control (add it to .gitignore) and readable only by the user the
+// service runs as:
+//   sudo chown twcmanager TWCManager_config.json
+//   sudo chmod 600 TWCManager_config.json
+
+{
+
+  //////////////////////////////////////////////////////////////////////////
+  // RS-485 interface
+
+  // Most users will have only one ttyUSB adapter plugged in and the default
+  // value of '/dev/ttyUSB0' will work. If not, run 'dmesg | grep ttyUSB' on the
+  // command line to find your RS-485 adapter and put its ttyUSB# value here.
+  // If you are using a non-USB adapter like an RS-485 shield, the value may need
+  // to be something like '/dev/serial0'.
+  "rs485Adapter": "/dev/ttyUSB0",
+
+  // The TWC's RS-485 port runs at 9600 baud, which has been verified with an
+  // oscilloscope. Do not change this unless something changes in future
+  // hardware.
+  "baud": 9600,
+
+  //////////////////////////////////////////////////////////////////////////
+  // Wiring limits
+  //
+  // EDIT THESE FIRST. The 6A defaults below are deliberately too low to be
+  // useful: a fresh copy of this file must never ask your chargers for more
+  // current than your wiring can carry.
+
+  // The maximum number of amps your charger wiring can handle.
+  // Most U.S. chargers are wired to handle at least 40A and sometimes 80A,
+  // whereas EU chargers handle at most 32A (using 3 AC lines instead of 2, so
+  // the total power delivered is similar).
+  // Circuit breakers are designed to handle only 80% of their max rating
+  // continuously, so if your charger has a 50A breaker, put 50 * 0.8 = 40 here:
+  //    40 amp breaker * 0.8 = 32
+  //    30 amp breaker * 0.8 = 24
+  //   100 amp breaker * 0.8 = 80
+  // On a three-phase supply this is the limit per phase.
+  "wiringMaxAmpsAllTWCs": 6,
+
+  // If all your chargers share a single circuit breaker, set this to the same
+  // value as wiringMaxAmpsAllTWCs.
+  // Rarely, each TWC is wired to its own circuit breaker. If you are absolutely
+  // sure your chargers each have a separate breaker, put the value of that
+  // breaker * 0.8 here, and put the sum of all breakers * 0.8 in
+  // wiringMaxAmpsAllTWCs. For example, two TWCs each with a 50A breaker gives
+  // wiringMaxAmpsPerTWC = 40 and wiringMaxAmpsAllTWCs = 80.
+  "wiringMaxAmpsPerTWC": 6,
+
+  // The lowest number of amps to offer a car.
+  //
+  // https://teslamotorsclub.com/tmc/threads/model-s-gen2-charger-efficiency-testing.78740/#post-1844789
+  // says you use 10.85% more power (91.75/82.77 = 1.1085) charging at 5A vs 40A,
+  // 2.48% more at 10A vs 40A and 1.9% more at 20A vs 40A, on a car with a 2nd
+  // generation onboard AC/DC converter (VINs ending in 20000 and higher).
+  // https://teslamotorsclub.com/tmc/threads/higher-amp-charging-is-more-efficient.24972/
+  // says cars with a 1st generation charger may use up to 30% more power at 6A
+  // vs 40A, though that data compares 120V 12A with 240V 40A, and converting
+  // 120V AC to the 400V DC the battery needs wastes much more than 240V AC does.
+  //
+  // The main point is that 6A charging wastes a lot of power, so 12A is a better
+  // value on a single-phase supply. With three-phase power you can lower this to
+  // 6 and still charge with more power than 12A single-phase:
+  // 12A * 230V * 1 = 2760W single-phase versus 6A * 230V * 3 = 4140W
+  // three-phase. Consult an electrician if this does not make sense.
+  //
+  // https://forums.tesla.com/forum/forums/charging-lowest-amperage-purposely
+  // says another reason to charge at higher power is to preserve battery life.
+  // The best charge rate is the capacity of the battery pack / 2, which home
+  // chargers cannot reach, so charging as fast as your wiring supports is best
+  // from that standpoint. How much damage slower rates really do is not clear.
+  //
+  // This must not be below 6: a TWC cannot offer less than 6A, and a lower value
+  // here only makes the arithmetic lie.
+  "minAmpsPerTWC": 6,
+
+  // Amps to offer when no charging schedule is active.
+  // -1 means "track green energy sources" (no fixed limit from this setting).
+  //
+  // ALSO IN THE STATUS FILE. This is the value to start from; the web page's
+  // "(Non-scheduled) Power" dropdown writes its choice to TWCManager_status.ini,
+  // and from then on that is what counts.
+  "nonScheduledAmpsMax": 6,
+
+  //////////////////////////////////////////////////////////////////////////
+  // Mains supply
+
+  // Mains voltage and phase count, used to estimate the kWh delivered when
+  // running as master. Typical values:
+  //   240 / 1  North America
+  //   230 / 1  EU single-phase
+  //   230 / 3  EU three-phase
+  // These only affect the kWh figure in the log, the database and the web page,
+  // never the current offered to the cars.
+  "supplyVolts": 230,
+  "supplyPhases": 1,
+
+  //////////////////////////////////////////////////////////////////////////
+  // VIN approval
+  //
+  // Cars are identified by the VIN their TWC reports over RS-485. A car whose
+  // VIN is not approved is offered 0A, so it will not charge.
+  //
+  // This is a deterrent, not a lock: a TWC that loses its RS-485 link falls back
+  // to standalone mode and charges at full rate regardless of what is set here.
+
+  // What to do with a car that reports no VIN at all (asleep, CAN disabled,
+  // non-Tesla adapter, or the TWC has not answered yet).
+  // false = let it charge. Start here until you trust VIN reporting.
+  // true  = offer it 0A.
+  "blockUnknownVINs": false,
+
+  // Approved cars, as "VIN": expiry.
+  //   0            = approved forever
+  //   unix seconds = approved until that moment (the [24h] button on the web
+  //                  page sets this; expired entries are dropped on startup)
+  //
+  // IMPORTANT: an empty list is not "allow everything". A car that reports a VIN
+  // which is not listed here is offered 0A, whatever blockUnknownVINs says, so
+  // put your own VINs in before you rely on this. Run with debugLevel 2 and look
+  // for "Current VIN string" in the log to see the VIN your TWC reports.
+  //
+  // ALSO IN THE STATUS FILE. This is the list to start from. As soon as you use
+  // the [always] / [24h] / [revoke] links on the web page, the whole list is
+  // written to TWCManager_status.ini and that list is what counts.
+  "approvedVINs": {
+    // Replace these with your own VINs, or charging will not start
+    // "5YJ3000000F000001": 0,
+    // "5YJS000000F000002": 0,
+  },
+
+  //////////////////////////////////////////////////////////////////////////
+  // Operating mode
+
+  // Normally we fake being a TWC Master using 1.
+  // Two other settings are available, but are only useful for debugging and
+  // experimenting:
+  //   0 = fake being a TWC Slave instead of Master.
+  //   2 = display received RS-485 messages but do not send any, unless you use
+  //       the debugging web interface (index.php?debugTWC=1) to send messages.
+  "fakeMaster": 1,
+
+  // All TWCs ship with a random two-byte TWCID. We default to using 7777 as our
+  // fake TWC ID. There is a 1 in 64535 chance that this ID matches each real TWC
+  // on the network, in which case you should pick a different random id here.
+  // This is not really too important: even if this ID matches another TWC on the
+  // network, that TWC will pick its own new random ID as soon as it sees ours
+  // conflicts. Two hex bytes.
+  "fakeTWCID": "7777",
+
+  // TWCs send a seemingly-random byte after their 2-byte TWC id in a number of
+  // messages, called their "Sign" for lack of a better term. The byte never
+  // changes unless the TWC is reset or power cycled. We use hard-coded values
+  // because it is not known whether there are any rules to what values can be
+  // chosen; 77 was picked because it is easy to recognise in logs.
+  // These should not need to be changed. One hex byte each.
+  "masterSign": "77",
+  "slaveSign": "77",
+
+  //////////////////////////////////////////////////////////////////////////
+  // Logging
+
+  // How much debugging info to print.
+  //    0 = no output other than errors
+  //    1 = warnings and link-ready messages
+  //    2 = adds the 30-second status block (a good level for normal running)
+  //  3-8 = adds more debugging info
+  //    9 = adds raw RS-485 messages transmitted and received (2-3 per second)
+  //   10 = all info
+  //   11 = more than all info
+  //   20 = even more
+  // The -l / --log command line option overrides this when given.
+  // Levels above 2 write several lines per second. On a Raspberry Pi logging to
+  // an SD card, do not leave those running for days.
+  "debugLevel": 2,
+
+  // Display milliseconds after the time on each line of debug info.
+  "displayMilliseconds": false,
+
+  //////////////////////////////////////////////////////////////////////////
+  // Web interface
+
+  // Directory used to derive the SysV IPC key shared with the web interface
+  // (index.php). The PHP page must point $twcScriptDir at this same directory,
+  // because the key is derived from its inode number. If this directory is ever
+  // recreated, the inode changes and the web interface silently stops seeing
+  // the queue.
+  // Set this to the directory holding index.php, even if you do not use the web
+  // interface: the directory has to exist or TWCManager will not start.
+  "webIPCDir": "/home/pi/TWCManager",
+
+  //////////////////////////////////////////////////////////////////////////
+  // MySQL logging
+  //
+  // TWCManager writes one row per TWC every 30 seconds and EXITS AT STARTUP IF
+  // IT CANNOT CONNECT, so these four values have to be right. Use 'localhost'
+  // for a database on the same machine.
+
+  "mysql_user": "twcmanager",
+  "mysql_passwd": "changeme",
+  "mysql_host": "localhost",
+  "mysql_database": "vehicles",
+
+  //////////////////////////////////////////////////////////////////////////
+  // Files
+
+  // Where TWCManager writes the settings it changes by itself. TWCManager must
+  // be able to write this file and create a temp file next to it. Relative names
+  // are resolved against the directory holding the TWCManager script.
+  "statusFileName": "TWCManager_status.ini",
+
+}
